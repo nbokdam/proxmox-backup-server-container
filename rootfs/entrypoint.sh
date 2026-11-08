@@ -23,6 +23,46 @@ chown backup:backup "$ETC" "$LIB" "$LOG"
 chmod 700 "$ETC" "$LIB" "$LOG"
 rm -f "$ETC"/.*.lck "$ETC"/*.lock 2>/dev/null || true
 
+# The package postinst ran at image build time, against an empty config. Its upgrade
+# migrations are gated on the previously installed version ("configure <old>"), so replay it
+# against the persisted volumes whenever the image version differs from the one that last
+# used them. Failure is fatal on purpose: don't start the daemons on a half-migrated config.
+migrate_volumes() {
+  local marker="$LIB/.image-version" current previous postinst
+  current=$(dpkg-query -W -f='${Version}' proxmox-backup-server)
+  postinst=/var/lib/dpkg/info/proxmox-backup-server.postinst
+
+  if [ ! -s "$marker" ]; then
+    # Fresh volume (nothing to migrate) or one from before this marker existed (unknown origin).
+    if [ -e "$ETC/datastore.cfg" ] || [ -e "$ETC/user.cfg" ]; then
+      log "WARNING: existing data without version marker; cannot determine migrations to run"
+    fi
+    previous=""
+  else
+    previous=$(cat "$marker")
+  fi
+
+  if [ -n "$previous" ] && [ "$previous" != "$current" ]; then
+    if dpkg --compare-versions "$previous" gt "$current"; then
+      log "WARNING: volume was last used by newer version $previous (downgrade to $current); skipping migrations"
+    else
+      log "upgrading volume data $previous -> $current, running package postinst"
+      # dpkg-maintscript-helper (called by the postinst) requires dpkg's maintscript environment.
+      DPKG_MAINTSCRIPT_NAME=postinst DPKG_MAINTSCRIPT_PACKAGE=proxmox-backup-server \
+      DPKG_MAINTSCRIPT_PACKAGE_REFCOUNT=1 DPKG_MAINTSCRIPT_ARCH=amd64 \
+      DPKG_RUNNING_VERSION="$current" "$postinst" configure "$previous" 2>&1 | tee /tmp/postinst.out
+      # The postinst reports most migration failures as messages and still exits 0.
+      if [ "${PIPESTATUS[0]}" -ne 0 ] || grep -q -E '^(Failed migrate|Failed to rename|Error:)' /tmp/postinst.out; then
+        log "ERROR: postinst migration failed; not starting (volume marker left at $previous)"
+        exit 1
+      fi
+    fi
+  fi
+  echo "$current" > "$marker"
+  chown backup:backup "$marker"
+}
+migrate_volumes
+
 install_cert() {
   [ -n "${PBS_TLS_CERT:-}" ] && [ -r "${PBS_TLS_CERT}" ] && [ -r "${PBS_TLS_KEY:-}" ] || return 0
   # PBS reads the key and certificate chain from these fixed names.
