@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:pinDigests"
+  ],
+  "automerge": true,
+  "platformAutomerge": false,
+  "timezone": "Europe/Amsterdam",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Proxmox Backup Server version from the Proxmox apt repository",
+      "managerFilePatterns": ["/(^|/)Dockerfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) registryUrl=(?<registryUrl>\\S+)\\s+ARG PBS_VERSION=(?<currentValue>\\S+)"
+      ]
+    }
+  ]
+}
