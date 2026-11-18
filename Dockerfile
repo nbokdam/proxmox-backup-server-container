@@ -1,7 +1,7 @@
 FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 
 # renovate: datasource=deb depName=proxmox-backup-server registryUrl=http://download.proxmox.com/debian/pbs?suite=trixie&components=pbs-no-subscription&binaryArch=amd64
-ARG PBS_VERSION=4.2.11-1
+ARG PBS_VERSION=4.2.12-1
 
 ARG DEBIAN_FRONTEND=noninteractive
 
